@@ -1,0 +1,9 @@
+conda install -c conda-forge pytorch-lightning
+Conda install matplotlib
+conda install --channel conda-forge mrcfile
+Conda install h5py
+Conda install lxml
+Conda install scikit-learn scikit-image
+Conda install pyqtgraph==0.10.0
+Conda install openpyxl
+Conda install pytorch==1.4.0
