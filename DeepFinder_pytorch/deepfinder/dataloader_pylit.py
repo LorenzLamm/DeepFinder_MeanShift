@@ -58,23 +58,37 @@ def to_categorical(y, num_classes=None, dtype='float32'):
 
 
 class DeepFinder_dataset_2D(Dataset):
-    def __init__(self, path_data, path_target, path_points):
+    def __init__(self, path_data, path_target, path_points, max_len=None):
         self.data = np.load(path_data)
         self.target = np.load(path_target)
         self.points = np.load(path_points)
+        self.margin = 4.
+        if max_len is not None:
+            self.data = self.data[:max_len]
+            self.target = self.target[:max_len]
+            self.points = self.points[:max_len]
         self.shape = self.data.shape
-        self.margin = 5
+
 
     def __len__(self):
         return self.data.shape[0]
 
     def __getitem__(self, idx):
         points = self.points[idx]
-        points = points[np.any((points[:, 0] > self.margin, points[:, 1] > self.margin))]
-        points = points[np.any((points[:, 0] < self.shape[1]-self.margin, points[:, 1] < self.shape[2]-self.margin))]
+        points = points[np.all((points[:, 0] > self.margin, points[:, 1] > self.margin), axis=0)]
+        points = points[np.all((points[:, 0] < self.shape[1]-self.margin, points[:, 1] < self.shape[2]-self.margin), axis=0)]
         return torch.from_numpy(self.data[idx]).unsqueeze(0).float(), torch.from_numpy(points).float().squeeze(), \
                torch.from_numpy(self.target[idx]).unsqueeze(0).float()
 
+
+def mean_shift_collate(batch):
+    data = [item[0] for item in batch]
+    target = [item[1] for item in batch]
+    gt_imgs = [item[2] for item in batch]
+    # target = torch.tensor(target)
+    data = torch.stack(data)
+    gt_imgs = torch.stack(gt_imgs)
+    return data, target, gt_imgs
 
 
 class DeepFinder_dataset(Dataset):
@@ -99,6 +113,8 @@ class DeepFinder_dataset(Dataset):
             return self.generate_batch_direct_read(idx)
         else:
             return self.generate_batch_from_array(idx)
+
+
 
 
 

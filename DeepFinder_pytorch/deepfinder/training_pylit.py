@@ -28,6 +28,7 @@ from . import losses_pylit
 from .utils import core
 from .utils import common as cm
 from argparse import ArgumentParser
+from deepfinder.dataloader_pylit import mean_shift_collate
 
 
 
@@ -164,7 +165,8 @@ class Train(core.DeepFinder):
         # self.net = models.my_model(self.dim_in, self.Ncl)
         self.loss_fn = losses_pylit.Tversky_loss(dim=((0,2,3) if two_D_test else (0,2,3,4)))
         if two_D_test:
-            self.loss_fn = losses_pylit.MeanShift_loss()
+            self.loss_fn = losses_pylit.MeanShift_loss_directional()
+            # self.loss_fn = losses_pylit.MeanShift_loss()
         # self.loss_fn = torch.nn.BCELoss()
         self.Lrnd = Lrnd  # random shifts applied when sampling data- and target-patches (in voxels)
         if two_D_test:
@@ -254,8 +256,8 @@ class Train(core.DeepFinder):
 
 
         if two_D_test:
-            train_set = DeepFinder_dataset_2D(two_D_data_train[0], two_D_data_train[1], two_D_data_train[2])
-            val_set = DeepFinder_dataset_2D(two_D_data_val[0], two_D_data_val[1], two_D_data_val[2])
+            train_set = DeepFinder_dataset_2D(two_D_data_train[0], two_D_data_train[1], two_D_data_train[2], max_len=256)
+            val_set = DeepFinder_dataset_2D(two_D_data_val[0], two_D_data_val[1], two_D_data_val[2], max_len=4)
         else:
             train_set = DeepFinder_dataset(self.flag_direct_read, path_data, path_target, objlist_train, self.dim_in,
                                            self.Ncl, self.Lrnd, self.h5_dset_name)
@@ -267,7 +269,7 @@ class Train(core.DeepFinder):
 
 
         logger = pl_loggers.TensorBoardLogger(self.tensorboard_logdir)
-        trainer = pl.Trainer(logger=logger, log_every_n_steps=1)
+        trainer = pl.Trainer(logger=logger, log_every_n_steps=1,gpus=1)
         trainer.fit(self.model, train_loader, val_loader)
 
 

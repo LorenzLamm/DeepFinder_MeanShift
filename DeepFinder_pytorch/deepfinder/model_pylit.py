@@ -19,6 +19,7 @@ from deepfinder.utils.weighted_mean_shift import MeanShift_weighted
 
 from matplotlib import pyplot as plt
 from torch.nn.functional import normalize
+import scipy
 
 from sklearn.cluster import MeanShift
 
@@ -104,8 +105,8 @@ class DeepFinder_model(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         batch_data, batch_target, gt_img = batch
-        img, pred, _ = self(batch_data)
-        loss = self.loss_fn(batch_target, pred)
+        img, pred, seeds = self(batch_data, batch_target.clone().detach().cpu())
+        loss, _ = self.loss_fn(batch_target, pred, seeds.to(self.device))
         self.log('hp/train loss', loss)
         self.log('hp/train acc', torch.mean((((img > 0)*1.0)== ((gt_img > 0)*1.0))*1.0))
         self.epoch_acc_train.append(torch.mean((((img > 0)*1.0)== ((gt_img > 0)*1.0))*1.0))
@@ -114,53 +115,76 @@ class DeepFinder_model(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         batch_data, batch_target, gt_img = batch
-        img, pred, seeds = self(batch_data)
-        loss = self.loss_fn(batch_target, pred)
+        # img, pred, seeds = self(batch_data)
+        img, pred, seeds = self(batch_data, batch_target.clone().detach().cpu())
+        loss, mins_seeds = self.loss_fn(batch_target, pred, seeds.to(self.device))
 
-        ms_img = img[0,0].numpy()
-        points = np.argwhere(ms_img > 0.3)
-        ms_weights = ms_img[ms_img > 0.3]
-        ms_weights = np.reshape(ms_weights, (-1))
+        self.eval_plots(batch_target, pred, mins_seeds, seeds, img, batch_data, gt_img.detach().cpu().numpy()[0,0,1])
 
-        # if points.shape[0] > 0 and points.shape[0] < img[0,0].shape[1] * img[0,0].shape[0]:
-            # ms = MeanShift(bandwidth=5.)
-            # ms.fit(points)
-            # center_coords = ms.cluster_centers_
-        ms = MeanShift_weighted(bandwidth=5.)
-        center_coords, center_idcs = ms.mean_shift(points, ms_weights, weighting='simple', n_pr=8, fuse_dist=0.5)
-        mask = np.ones(center_coords.shape[0])
-        for nr in range(center_coords.shape[0]):
-            if np.sum(center_idcs == nr) < 4:
-                mask[nr] = 0
-        center_coords = center_coords[mask == 1]
-        # else:
-        #     center_coords = 25. * np.ones((1,2))
-        plt.figure()
-        plt.subplot(1, 3, 1)
-        plt.scatter(x=batch_target[0, :, 0], y=batch_target[0, :, 1], c='blue')
-        plt.scatter(x=pred[0, :, 1], y=pred[0, :, 0], c='red')
-        plt.scatter(x=pred[1, :, 1], y=pred[1, :, 0], c='red')
-        if pred.shape[0] > 2:
-            plt.scatter(x=pred[2, :, 1], y=pred[2, :, 0], c='red')
-            plt.scatter(x=pred[3, :, 1], y=pred[3, :, 0], c='red')
-        plt.imshow(batch_data[0, 0])
-        plt.subplot(1, 3, 2)
-        plt.scatter(x=batch_target[0, :, 0], y=batch_target[0, :, 1], c='blue')
-        plt.scatter(x=pred[0, :, 1], y=pred[0, :, 0], c='red')
-        plt.scatter(x=seeds[:, 1], y=seeds[:, 0], c='green')
-        plt.scatter(x=center_coords[:, 1], y=center_coords[:, 0], c='green', marker='P')
-        plt.imshow(img[0, 0])
-        plt.colorbar()
-        plt.subplot(1,3,3)
-        plt.imshow(np.zeros_like(img[0,0]))
-        plt.scatter(x = points[:, 1], y=points[:,0])
-        plt.colorbar()
-        plt.savefig('/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/log_imgs/progress.png')
         self.log('hp/val loss', loss)
         self.log('hp/val acc', torch.mean((((img > 0) * 1.0) == ((gt_img > 0) * 1.0)) * 1.0))
         self.epoch_acc_train.append(torch.mean((((img > 0) * 1.0) == ((gt_img > 0) * 1.0)) * 1.0))
         self.epoch_loss_train.append(loss)
         return loss
+
+    def eval_plots(self, batch_target, pred, mins_seeds, seeds, img, batch_data, gt_img):
+        plt.figure()
+        plt.scatter(x=batch_target[0, :, 0].detach().cpu(), y=batch_target.detach().cpu()[0, :, 1], c='black', s=100)
+        plt.scatter(pred.clone().detach().cpu().numpy()[0, :, 0], pred.clone().detach().cpu().numpy()[0, :, 1],
+                    c=mins_seeds.clone().detach().cpu().numpy()[0])
+        plt.scatter(seeds.clone().detach().cpu().numpy()[:, 0], seeds.clone().detach().cpu().numpy()[:, 1], c='yellow')
+        plt.colorbar()
+        plt.savefig('/fs/pool/pool-engel/Lorenz/DeepFinder_MeanShift_RNN/log_imgs/loss_vals.png')
+
+        ms_img = img[0, 0].detach().cpu().numpy()
+        points = np.argwhere(ms_img > 0.5)
+        ms_weights = ms_img[ms_img > 0.5]
+        ms_weights = np.reshape(ms_weights, (-1))
+
+        # if points.shape[0] > 8 and points.shape[0] < img[0,0].shape[1] * img[0,0].shape[0]:
+        if points.shape[0] > 8:  # and points.shape[0] < img[0,0].shape[1] * img[0,0].shape[0]:
+            # ms = MeanShift(bandwidth=5.)
+            # ms.fit(points)
+            # center_coords = ms.cluster_centers_
+            ms = MeanShift_weighted(bandwidth=4.)
+            center_coords, center_idcs = ms.mean_shift(points, ms_weights, weighting='simple', n_pr=8, fuse_dist=2.)
+            center_coords2, _ = self.mean_shift_for_seeds(torch.tensor(points),
+                                                          torch.tensor(ms_weights - 0.5).to(self.device),
+                                                          torch.tensor(points), bandwidth=5., max_iter=1000)
+            mask = np.ones(center_coords.shape[0])
+            for nr in range(center_coords.shape[0]):
+                if np.sum(center_idcs == nr) < 4:
+                    mask[nr] = 0
+            center_coords = center_coords[mask == 1]
+        else:
+            center_coords = 25. * np.ones((1, 2))
+        plt.figure(figsize=(20, 20))
+        plt.subplot(1, 4, 1)
+        plt.scatter(x=batch_target[0, :, 0].detach().cpu(), y=batch_target.detach().cpu()[0, :, 1], c='blue', s=60)
+        plt.scatter(x=pred.clone().detach().cpu()[0, :, 0], y=pred.clone().detach().cpu()[0, :, 1], c='red')
+        # plt.scatter(x=pred.clone().detach().cpu()[1, :, 1], y=pred.clone().detach().cpu()[1, :, 0], c='red')
+        if pred.shape[0] > 2:
+            plt.scatter(x=pred.clone().detach().cpu()[2, :, 1], y=pred.clone().detach().cpu()[2, :, 0], c='red')
+            plt.scatter(x=pred.clone().detach().cpu()[3, :, 1], y=pred.clone().detach().cpu()[3, :, 0], c='red')
+        plt.imshow(batch_data.clone().detach().cpu()[0, 0])
+        plt.subplot(1, 4, 2)
+        plt.scatter(x=batch_target.detach().cpu()[0, :, 0], y=batch_target.detach().cpu()[0, :, 1], c='blue')
+        plt.scatter(x=pred.clone().detach().cpu()[0, :, 0], y=pred.clone().detach().cpu()[0, :, 1], c='red')
+        plt.scatter(x=seeds.clone().detach().cpu()[:, 0], y=seeds.clone().detach().cpu()[:, 1], c='green')
+        if points.shape[0] > 8:  # and points.shape[0] < img[0,0].shape[1] * img[0,0].shape[0]:
+            # plt.scatter(x=center_coords2.clone().detach().cpu()[:, 1], y=center_coords2.clone().detach().cpu()[:, 0],
+            #             c='blue')
+            plt.scatter(x=center_coords[:, 1], y=center_coords[:, 0], c='black', marker='P')
+        plt.imshow(img.clone().detach().cpu()[0, 0])
+        plt.colorbar(fraction=0.046, pad=0.04)
+        plt.subplot(1, 4, 3)
+        plt.imshow(ms_img)
+        # plt.scatter(x = points[:, 1], y=points[:,0])
+        plt.colorbar(fraction=0.046, pad=0.04)
+        plt.subplot(1,4,4)
+        plt.imshow(gt_img)
+
+        plt.savefig('/fs/pool/pool-engel/Lorenz/DeepFinder_MeanShift_RNN/log_imgs/progress.png')
 
 
     def on_epoch_end(self):
@@ -259,7 +283,7 @@ class DeepFinder_model_2D_MS(DeepFinder_model_2D):
     #     x = torch.cat((x_high, x), dim=1)
     #     x = self.layer5(x)
 
-    def initialize_seeds(self, x, num_seeds=100, margin=5):
+    def initialize_seeds(self, x, sample_pos, num_seeds=100, margin=2):
         shape = x.shape
         all_seeds = []
         if len(shape) == 4:
@@ -267,10 +291,12 @@ class DeepFinder_model_2D_MS(DeepFinder_model_2D):
             s_max2 = shape[3]
         else:
             raise IOError('Wrong input shape!')
-        for i in range(num_seeds):
+        while len(all_seeds) < num_seeds:
             x_comp = np.random.uniform(margin, s_max1-margin)
             y_comp = np.random.uniform(margin, s_max2-margin)
-            all_seeds.append(np.array((x_comp, y_comp)))
+            dist = scipy.spatial.distance.cdist(sample_pos.numpy(),np.expand_dims(np.array((x_comp, y_comp)), axis=0))
+            if np.min(dist, axis=0) < 8.0:
+                all_seeds.append(np.array((x_comp, y_comp)))
         all_seeds = torch.from_numpy(np.stack(all_seeds))
         return all_seeds
 
@@ -290,26 +316,30 @@ class DeepFinder_model_2D_MS(DeepFinder_model_2D):
         nn_weights = nn_weights.reshape(1, -1)
         thr = bandwidth
         # max = torch.tensor(1.0e+10).double().cuda()
-        max = torch.tensor(1.0).double()
-        min = torch.tensor(0.0).double()
+        max = torch.tensor(1.0).double().to(self.device)
+        min = torch.tensor(0.0).double().to(self.device)
+        nn_weights_min = 0.5
+        # nn_weights = nn_weights - nn_weights_min
         # dis=torch.where(sim>thr, 1-sim, max)
         dis = torch.where(dist < thr, max, min)
-        dis *= torch.exp(nn_weights)
+        dis = dis.to(self.device)
+        # dis *= torch.exp(nn_weights)
+        dis *= nn_weights
         dis = normalize(dis, dim=1, p=2)
         return dis
 
     def mean_shift_for_seeds(self, coords, nn_weights, seeds, bandwidth, max_iter=100):
         stop_thresh = 1e-3 * bandwidth
         iter = 0
-        X = coords
-        S = seeds
-        B = torch.tensor(bandwidth).double()
+        X = coords.to(self.device)
+        S = seeds.to(self.device)
+        B = torch.tensor(bandwidth).double().to(self.device)
 
         while True:
             weight = self.get_weight(self.euclidean_dist(S, X.float()), nn_weights, B)
             num = (weight[:, :, None] * X).sum(dim=1)
             S_old = S
-            S = num / weight.sum(1)[:, None]
+            S = num / (weight.sum(1)[:, None] + 1e-7)
             iter += 1
 
             if (torch.norm(S - S_old, dim=1).mean() < stop_thresh or iter == max_iter):
@@ -333,11 +363,12 @@ class DeepFinder_model_2D_MS(DeepFinder_model_2D):
         coords_x = coords_x.repeat(1, s_max1).view(-1, s_max1).transpose(1, 0)
         coords_y = coords_y.repeat(1, s_max1).view(-1, s_max1)
         coordinate_grid = torch.cat((coords_x.unsqueeze(2), coords_y.unsqueeze(2)), dim=2)
+        coordinate_grid = coordinate_grid.transpose(1,0)
         coordinate_grid = torch.reshape(coordinate_grid, (-1, 2))
         return coordinate_grid
 
 
-    def forward(self, x):
+    def forward(self, x, gt_centers):
         x_high = self.layer1(x)
         mid = self.layer2(x_high)
         x = self.layer3(mid)
@@ -347,10 +378,12 @@ class DeepFinder_model_2D_MS(DeepFinder_model_2D):
         x = self.layer5(x)
         coords = self.initialize_coords(x)
         means = []
-        seeds = self.initialize_seeds(x, num_seeds=32)
 
         for i in range(x.shape[0]):
-            mean, p_num = self.mean_shift_for_seeds(coords, x[i,0], seeds, bandwidth=6., max_iter=100)
+            seeds = self.initialize_seeds(x, gt_centers[i], num_seeds=32, margin=2.)
+            if i == 0:
+                seeds0 = seeds.clone()
+            mean, p_num = self.mean_shift_for_seeds(coords, x[i,0], seeds, bandwidth=4., max_iter=100)
             means.append(mean)
         means = torch.stack(means)
-        return x, means, seeds
+        return x, means, seeds0
