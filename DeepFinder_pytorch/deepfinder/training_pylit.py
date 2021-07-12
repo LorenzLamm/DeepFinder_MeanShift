@@ -153,7 +153,7 @@ class TargetBuilder(core.DeepFinder):
 
 # TODO: add method for resuming training. It should load existing weights and train_history. So when restarting, the plot curves show prececedent epochs
 class Train(core.DeepFinder):
-    def __init__(self, Ncl, dim_in, lr, weight_decay, Lrnd, tensorboard_logdir, two_D_test=False):
+    def __init__(self, Ncl, dim_in, lr, weight_decay, Lrnd, tensorboard_logdir, two_D_test=False, three_D_test=False):
         core.DeepFinder.__init__(self)
         self.path_out = './'
         self.tensorboard_logdir = tensorboard_logdir
@@ -164,7 +164,7 @@ class Train(core.DeepFinder):
         self.dim_in = dim_in  # /!\ has to a multiple of 4 (because of 2 pooling layers), so that dim_in=dim_out
         # self.net = models.my_model(self.dim_in, self.Ncl)
         self.loss_fn = losses_pylit.Tversky_loss(dim=((0,2,3) if two_D_test else (0,2,3,4)))
-        if two_D_test:
+        if two_D_test or three_D_test:
             self.loss_fn = losses_pylit.MeanShift_loss_directional()
             # self.loss_fn = losses_pylit.MeanShift_loss()
         # self.loss_fn = torch.nn.BCELoss()
@@ -226,7 +226,8 @@ class Train(core.DeepFinder):
     #                        very slow.
     # TODO: delete flag_direct_read. Launch should detect if direct_read is desired by checking if input data_list and
     #       target_list contain str (path) or numpy array
-    def launch(self, path_data, path_target, objlist_train, objlist_valid, two_D_test=False, two_D_data_train=(None, None), two_D_data_val=(None, None)):
+    def launch(self, path_data, path_target, objlist_train, objlist_valid, two_D_test=False, three_D_test=False,
+               two_D_data_train=(None, None), two_D_data_val=(None, None)):
         """This function launches the training procedure. For each epoch, an image is plotted, displaying the progression
         with different metrics: loss, accuracy, f1-score, recall, precision. Every 10 epochs, the current network weights
         are saved.
@@ -255,7 +256,7 @@ class Train(core.DeepFinder):
         self.check_arguments(path_data, path_target, objlist_train, objlist_valid)
 
 
-        if two_D_test:
+        if two_D_test or three_D_test:
             train_set = DeepFinder_dataset_2D(two_D_data_train[0], two_D_data_train[1], two_D_data_train[2], max_len=256)
             val_set = DeepFinder_dataset_2D(two_D_data_val[0], two_D_data_val[1], two_D_data_val[2], max_len=4)
         else:
@@ -269,7 +270,7 @@ class Train(core.DeepFinder):
 
 
         logger = pl_loggers.TensorBoardLogger(self.tensorboard_logdir)
-        trainer = pl.Trainer(logger=logger, log_every_n_steps=1,gpus=1)
+        trainer = pl.Trainer(logger=logger, log_every_n_steps=1,gpus=0)
         trainer.fit(self.model, train_loader, val_loader)
 
 

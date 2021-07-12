@@ -11,15 +11,19 @@ import cv2
 
 
 def sample_points(shape, num, min_dist):
-    all_points = np.zeros((0, 2))
+    all_points = np.zeros((0, len(shape)))
     for i in range(1000):
         rand_x, rand_y = np.random.randint(0, shape[0]), np.random.randint(0, shape[1])
+        if len(shape) == 3: rand_z = np.random.randint(0, shape[2])
+        cur_point = np.array((rand_x, rand_y))
+        if len(shape) == 3:
+            cur_point = np.array((rand_x, rand_y, rand_z))
         if i == 0:
-            all_points = np.concatenate((all_points, np.expand_dims(np.array((rand_x, rand_y)), 0)), 0)
+            all_points = np.concatenate((all_points, np.expand_dims(cur_point, 0)), 0)
         else:
-            dists = np.linalg.norm(all_points - np.array((rand_x, rand_y)), axis=1)
+            dists = np.linalg.norm(all_points - cur_point, axis=1)
             if np.min(dists) > min_dist:
-                all_points = np.concatenate((all_points, np.expand_dims(np.array((rand_x, rand_y)), 0)), 0)
+                all_points = np.concatenate((all_points, np.expand_dims(cur_point, 0)), 0)
         if all_points.shape[0] == num:
             break
     return all_points
@@ -27,11 +31,20 @@ def sample_points(shape, num, min_dist):
 def spheres_around_points(points, shape, radius):
     image_coord_x = np.tile(np.linspace(0, shape[0] - 1, shape[0]), (shape[1],1))
     image_coord_y = np.tile(np.linspace(0, shape[1] - 1, shape[1]), (shape[0],1)).transpose()
-    positions = np.concatenate((np.expand_dims(image_coord_x, 2), np.expand_dims(image_coord_y, 2)), 2)
-    positions = positions.reshape(shape[0] * shape[1], 2)
+    image_coord_x = np.linspace(0, shape[0]-1, shape[0])
+    image_coord_y = np.linspace(0, shape[1]-1, shape[1])
+    if len(shape) == 2:
+        image_coord_x, image_coord_y = np.meshgrid(image_coord_x, image_coord_y)
+        positions = np.concatenate((np.expand_dims(image_coord_x, 2), np.expand_dims(image_coord_y, 2)), 2)
+        positions = positions.reshape(shape[0] * shape[1], 2)
+    if len(shape) == 3:
+        image_coord_z = np.linspace(0, shape[2]-1, shape[2])
+        image_coord_x, image_coord_y, image_coord_z = np.meshgrid(image_coord_x, image_coord_y, image_coord_z)
+        positions = np.concatenate((np.expand_dims(image_coord_x, 3), np.expand_dims(image_coord_y, 3), np.expand_dims(image_coord_z, 3)), 3)
+        positions = positions.reshape(shape[0] * shape[1] * shape[2], 3)
     dist_mat = distance_matrix(positions, points)
     dist_mat = np.min(dist_mat, axis=1)
-    dist_mat = dist_mat.reshape(shape[0], shape[1])
+    dist_mat = dist_mat.reshape(*shape)
     target = dist_mat < radius
     return target
 
@@ -211,6 +224,7 @@ def add_noise_to_image(target, std):
 def sample_images(out_dir, num_images, shape, num_points, min_dist, noise, train_val_test='train', case='spheres'):
     all_images, all_targets, all_points = [], [], []
     for i in range(num_images):
+        print(i, "/", num_images)
         points = sample_points(shape, num_points, min_dist)
         if case == 'spheres':
             target = spheres_around_points(points, shape, 4)
@@ -228,22 +242,22 @@ def sample_images(out_dir, num_images, shape, num_points, min_dist, noise, train
     all_images = np.stack(all_images)
     all_targets = np.stack(all_targets)
     all_points = np.stack(all_points)
-    points_out = os.path.join(out_dir, train_val_test + '_points_' +case + '.npy')
-    images_out = os.path.join(out_dir, train_val_test + '_images_' +case + '.npy')
-    targets_out = os.path.join(out_dir, train_val_test + '_targets_' +case + '.npy')
+    points_out = os.path.join(out_dir, train_val_test + ('_3D' if len(shape) == 3 else '') +  '_points_' +case + '.npy')
+    images_out = os.path.join(out_dir, train_val_test + ('_3D' if len(shape) == 3 else '') +'_images_' +case + '.npy')
+    targets_out = os.path.join(out_dir, train_val_test + ('_3D' if len(shape) == 3 else '') +'_targets_' +case + '.npy')
     np.save(points_out, all_points)
     np.save(images_out, all_images)
     np.save(targets_out, all_targets)
 
 
 
-num_images_train = 512
-num_images_val = 16
-out_dir = '/fs/pool/pool-engel/Lorenz/DeepFinder_MeanShift_RNN/toy_images'
-shape = [52, 52]
-num_points = 15
+num_images_train = 64
+num_images_val = 4
+out_dir = '/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/2D_test_data'
+shape = [52, 52, 52]
+num_points = 25
 min_dist = 6
 noise = 0.5
-case = 'ellipses'
+case = 'spheres'
 sample_images(out_dir, num_images_train, shape, num_points, min_dist, noise, train_val_test='train', case=case)
 sample_images(out_dir, num_images_val, shape, num_points, min_dist, noise, train_val_test='val', case=case)

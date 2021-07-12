@@ -78,7 +78,8 @@ class MeanShift_loss_directional(torch.nn.Module):
         #dot_prod *= dists_pred
         dot_prod = torch.mean(dot_prod)
 
-        loss = dot_prod #+ torch.mean(dists_pred)
+        # loss = dot_prod #+ torch.mean(dists_pred)
+        loss = torch.mean(dists_pred)
         # loss = torch.mean(dists_pred)
 
         print(dot_prod, loss)

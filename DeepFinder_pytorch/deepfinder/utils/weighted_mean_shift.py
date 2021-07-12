@@ -38,7 +38,7 @@ class MeanShift_weighted():
     def compute_weights(self, neigh_scores, weighting):
         if weighting is None:
             return np.ones_like(neigh_scores)
-        min_max_range = self.max_score - self.min_score
+        min_max_range = self.max_score - self.min_score + 1e-7
         weight = (neigh_scores - self.min_score) / min_max_range
         if weighting == 'simple':
             return weight
@@ -130,8 +130,8 @@ class MeanShift_weighted():
         return cluster_centers, cluster_idcs
 
 
-test_points = np.array([[2.,.5], [2.,1.], [3.,1.]])
-weights = np.array([0.5,0.8,0.7])
-ms = MeanShift_weighted(bandwidth=0.5)
-cluster_centers = ms.mean_shift(test_points, weights, fuse_dist=1.0)
-print(cluster_centers)
+# test_points = np.array([[2.,.5], [2.,1.], [3.,1.]])
+# weights = np.array([0.5,0.8,0.7])
+# ms = MeanShift_weighted(bandwidth=0.5)
+# cluster_centers = ms.mean_shift(test_points, weights, fuse_dist=1.0)
+# print(cluster_centers)
