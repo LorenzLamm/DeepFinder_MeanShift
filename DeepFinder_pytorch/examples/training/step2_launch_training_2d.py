@@ -8,6 +8,8 @@ import deepfinder.utils.objl as ol
 # is realized.
 
 # Input parameters:
+threeD = True
+
 path_train = ['/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/2D_test_data/train_images.npy',
               '/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/2D_test_data/train_targets.npy',
               '/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/2D_test_data/train_points.npy']
@@ -15,6 +17,16 @@ path_train = ['/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/2D_test_data
 path_val = ['/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/2D_test_data/val_images.npy',
               '/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/2D_test_data/val_targets.npy',
               '/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/2D_test_data/val_points.npy']
+
+
+if threeD:
+    path_train = ['/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/2D_test_data/train_3D_images_spheres.npy',
+                  '/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/2D_test_data/train_3D_targets_spheres.npy',
+                  '/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/2D_test_data/train_3D_points_spheres.npy']
+
+    path_val = ['/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/2D_test_data/val_3D_images_spheres.npy',
+                '/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/2D_test_data/val_3D_targets_spheres.npy',
+                '/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/2D_test_data/val_3D_points_spheres.npy']
 
 path_data = ['/Users/lorenz.lamm/PhD_projects/Deep_Finder/Deep_Finder_pytorch/examples/training/in/tomo17_bin4_dose-filt.rec',
              '/Users/lorenz.lamm/PhD_projects/Deep_Finder/Deep_Finder_pytorch/examples/training/in/tomo32_bin4_dose-filt.rec']
@@ -26,7 +38,7 @@ path_objl_valid = 'in/object_list_valid.xml'
 objl_train = ol.read_xml(path_objl_train)
 objl_valid = ol.read_xml(path_objl_valid)
 
-Nclass = 1
+Nclass = 2
 dim_in = 56 # patch size
 lr = 1e-5
 weight_decay = 1e-3
@@ -34,10 +46,10 @@ weight_decay = 1e-3
 
 # Initialize training task:
 trainer = Train(Ncl=Nclass, dim_in=dim_in, lr=lr, weight_decay=weight_decay, Lrnd=13,
-                tensorboard_logdir='/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/tensorboard_logs', two_D_test=True)
+                tensorboard_logdir='/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/tensorboard_logs', two_D_test=not threeD, three_D_test=threeD)
 trainer.path_out         = 'out/' # output path
 trainer.h5_dset_name     = 'dataset' # if training data is stored as h5, you can specify the h5 dataset
-trainer.batch_size       = 16
+trainer.batch_size       = 1
 trainer.epochs           = 100
 trainer.steps_per_epoch  = 100
 trainer.Nvalid           = 10 # steps per validation
@@ -52,5 +64,5 @@ trainer.class_weights = None # keras syntax: class_weights={0:1., 1:10.} every i
 # Load object lists:
 
 # Finally, launch the training procedure:
-trainer.launch(path_data, path_target, objl_train, objl_valid, two_D_test=True,
+trainer.launch(path_data, path_target, objl_train, objl_valid, two_D_test=not threeD, three_D_test=threeD,
                 two_D_data_train=path_train, two_D_data_val=path_val)

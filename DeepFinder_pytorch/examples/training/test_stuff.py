@@ -3,9 +3,21 @@ from matplotlib import pyplot as plt
 import torch
 from time import time
 import os
-from deepfinder.model_pylit import DeepFinder_model_2D_MS
-
+# from deepfinder.model_pylit import DeepFinder_model_2D_MS
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
+
+
+
+rand1 = torch.ones((128, 2))
+rand2 = -1 * torch.ones((128, 2))#.transpose(1,0)
+rand1 = torch.nn.functional.normalize(rand1)
+rand2 = torch.nn.functional.normalize(rand2)
+dot_prod = rand1*rand2
+dot_prod = torch.sum(dot_prod, axis=1)
+print(dot_prod)
+
+
+exit()
 
 shape = [50, 50, 50, 50]
 if len(shape) == 4:
