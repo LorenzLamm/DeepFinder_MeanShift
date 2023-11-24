@@ -7,14 +7,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Ellipse
 import cv2
+from pyellipsoid import drawing as pyel
 
 
-
-def sample_points(shape, num, min_dist):
+def sample_points(shape, num, min_dist, dist_to_boundary=5):
     all_points = np.zeros((0, len(shape)))
     for i in range(1000):
-        rand_x, rand_y = np.random.randint(0, shape[0]), np.random.randint(0, shape[1])
-        if len(shape) == 3: rand_z = np.random.randint(0, shape[2])
+        rand_x, rand_y = np.random.randint(dist_to_boundary, shape[0]-dist_to_boundary), np.random.randint(dist_to_boundary, shape[1]-dist_to_boundary)
+        if len(shape) == 3: rand_z = np.random.randint(dist_to_boundary, shape[2]-dist_to_boundary)
         cur_point = np.array((rand_x, rand_y))
         if len(shape) == 3:
             cur_point = np.array((rand_x, rand_y, rand_z))
@@ -51,6 +51,14 @@ def spheres_around_points(points, shape, radius):
 def get_ellipse(img, center, width, height, angle):
     cv2.ellipse(img, center=(int(center[0]), int(center[1])), axes=(width,height), angle=angle, startAngle=0, endAngle=360, color=(1,1,1), thickness=-1)
     return img
+
+def get_ellipse_3D(img, center, width, height, depth, angles=(90., 90., 90.)):
+    shape = img.shape
+    ell_center = center
+    ell_radii = (width, height, depth)
+    ell_angles = np.deg2rad(angles)
+    binary = pyel.make_ellipsoid_image(shape, ell_center, ell_radii, ell_angles)
+    return binary
 
 def rotate(origin, point, angle):
     """
@@ -165,18 +173,63 @@ def get_moon_centered_at_arc(radius):
     exit()
 
 
-def ellipses_around_points(points):
-    img = np.zeros((52,52))
+def ellipses_around_points(points, shape):
+    img = np.zeros(shape)
     for point in points:
-
         width = int(np.random.uniform(2,7))
         height = int(np.random.uniform(2,7))
-        angle = int(np.random.uniform(0,360))
-        img = get_ellipse(img, point, width, height, angle)
+        if len(img.shape) == 2:
+            angle = int(np.random.uniform(0,360))
+            img = get_ellipse(img, point, width, height, angle)
+        elif len(img.shape) == 3:
+            angles = (int(np.random.uniform(0,360)), int(np.random.uniform(0,360)), int(np.random.uniform(0,360)))
+            depth = int(np.random.uniform(2,7))
+            img = get_ellipse_3D(img, point, width, height, depth, angles)
     return img
 
 
-def moons_around_points(points, shape, radii):
+def sandclocks_around_points(points, shape, radii=(5,5), shift_val=4):
+    possible_shifts_pairs = [(np.array([0, 0, shift_val]), np.array([0, 0, -shift_val])),
+                        (np.array([0, shift_val, 0]), np.array([0, -shift_val, 0])),
+                        (np.array([shift_val, 0, 0]), np.array([-shift_val, 0, 0]))
+                        ]
+    # possible_shifts_pairs = [(np.array([a, b, c]), np.array([-a, -b, -c])) if (abs(a)+abs(b)+abs(c))==shift_val else None for a in range(-shift_val, shift_val+1) for b in range(-shift_val, shift_val+1) for c in range(-shift_val, shift_val+1)]
+    possible_shifts_pairs = [(np.array([a, b, c]), np.array([-a, -b, -c])) if np.abs(np.linalg.norm(np.array([a, b, c])) - shift_val) < .3 else None for a in range(-shift_val, shift_val+1) for b in range(-shift_val, shift_val+1) for c in range(-shift_val, shift_val+1)]
+    possible_shifts_pairs = [x for x in possible_shifts_pairs if x is not None]
+
+    shifts = [possible_shifts_pairs[np.random.randint(len(possible_shifts_pairs))] for _ in range(points.shape[0])]
+    points_1 = np.stack([point + shift[0] for (point, shift) in zip(points, shifts)])
+    points_2 = np.stack([point + shift[1] for (point, shift) in zip(points, shifts)])
+    spheres1 = spheres_around_points(points_1, shape, radius=radii[0])
+    spheres2 = spheres_around_points(points_2, shape, radius=radii[1])
+    sandclock_mask = np.logical_or(spheres1, spheres2)
+    return sandclock_mask
+
+
+def moons_around_points(points, shape, radii=(5,4), shift_val=3):
+    big_spheres = spheres_around_points(points, shape, radius=radii[0])
+    if len(shape) == 3:
+        possible_shifts = [np.array([0, 0, shift_val]),
+                        np.array([0, 0, -shift_val]),
+                        np.array([0, shift_val, 0]),
+                        np.array([0, -shift_val, 0]),
+                        np.array([shift_val, 0, 0]),
+                        np.array([-shift_val, 0, 0]),
+                            ]
+    elif len(shape) == 2:
+        possible_shifts = [np.array([0, shift_val]),
+                        np.array([0, -shift_val]),
+                        np.array([shift_val, 0]),
+                        np.array([-shift_val, 0]),
+                            ]
+    shifts = np.stack([possible_shifts[np.random.randint(len(possible_shifts))] for _ in range(points.shape[0])], axis=0)
+    points_shifted = points + shifts
+    small_spheres = spheres_around_points(points_shifted, shape, radius=radii[1])
+    moon_mask = np.logical_and(big_spheres, np.logical_not(small_spheres))
+    return moon_mask
+
+
+def moons_around_points_old(points, shape, radii):
     add_val = 2.
     image_coord_x = np.tile(np.linspace(0, shape[0] - 1, shape[0]), (shape[1],1))
     image_coord_y = np.tile(np.linspace(0, shape[1] - 1, shape[1]), (shape[0],1)).transpose()
@@ -231,7 +284,11 @@ def sample_images(out_dir, num_images, shape, num_points, min_dist, noise, train
         elif case == 'moons':
             target = moons_around_points(points, shape, (5, 4))
         elif case == 'ellipses':
-            target = ellipses_around_points(points)
+            target = ellipses_around_points(points, shape)
+        elif case == 'sandclock':
+            target = sandclocks_around_points(points, shape, (5, 4))
+        elif case == 'experimental':
+            target = experimental_around_points(points, shape, (5, 4))
         image = add_noise_to_image(target, noise)
         target_c1 = target == 0
         target_c2 = target == 1
@@ -248,16 +305,21 @@ def sample_images(out_dir, num_images, shape, num_points, min_dist, noise, train
     np.save(points_out, all_points)
     np.save(images_out, all_images)
     np.save(targets_out, all_targets)
+    
 
 
 
-num_images_train = 64
-num_images_val = 4
-out_dir = '/Users/lorenz.lamm/PhD_projects/DeepFinder_MeanShift/2D_test_data'
-shape = [52, 52, 52]
-num_points = 25
-min_dist = 6
-noise = 0.5
+num_images_train = 100
+num_images_val = 10
+num_images_test = 25
+out_dir = '/scicore/home/engel0006/GROUP/pool-engel/Lorenz/MeanShift_Loss/2D_test_data'
+# shape = [52, 52, 52]
+shape = [52, 52]
+num_points = 15
+# min_dist = 7
+min_dist = 9
+noise = 0.7
 case = 'spheres'
 sample_images(out_dir, num_images_train, shape, num_points, min_dist, noise, train_val_test='train', case=case)
 sample_images(out_dir, num_images_val, shape, num_points, min_dist, noise, train_val_test='val', case=case)
+sample_images(out_dir, num_images_test, shape, num_points, min_dist, noise, train_val_test='test', case=case)
