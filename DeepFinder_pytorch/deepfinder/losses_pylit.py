@@ -45,16 +45,26 @@ class Tversky_loss(torch.nn.Module):
 
 
 class MeanShift_loss(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, use_loss):
         super(MeanShift_loss, self).__init__()
+        self.use_loss = use_loss
 
-    def forward(self, true_pos, pred_pos):
+    def forward(self, true_pos, pred_pos, dummy=None):
+        
         dists = torch.cdist(true_pos.float(), pred_pos.float())
         mins, _ = torch.min(dists, dim=2)
         mins_seeds, _ = torch.min(dists, dim=1)
-        loss = torch.mean(mins)
-        loss_seeds = torch.mean(mins_seeds)
-        return loss + loss_seeds, mins_seeds
+        loss = torch.mean(mins) #+ .5 * torch.max(mins)
+        # loss = 0.
+        # loss = torch.max(mins)
+        loss_seeds = torch.mean(mins_seeds) #+ .5 * torch.max(mins_seeds)
+        # loss_seeds = torch.max(mins_seeds)
+        print(loss, loss_seeds)
+        # return 0., mins_seeds
+        just_in_case_losses = (loss, loss_seeds)
+        if not self.use_loss:
+            return 0., mins_seeds, just_in_case_losses
+        return loss + loss_seeds, mins_seeds, just_in_case_losses
 
 class MeanShift_loss_directional(torch.nn.Module):
     def __init__(self):
@@ -78,11 +88,6 @@ class MeanShift_loss_directional(torch.nn.Module):
         #dot_prod *= dists_pred
         dot_prod = torch.mean(dot_prod)
 
-        # loss = dot_prod #+ torch.mean(dists_pred)
-        loss = torch.mean(dists_pred)
-        # loss = torch.mean(dists_pred)
-
-        print(dot_prod, loss)
-
+        loss = dot_prod #+ torch.mean(dists_pred)
 
         return loss, dot_bkp.unsqueeze(0)
