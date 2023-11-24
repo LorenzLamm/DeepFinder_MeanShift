@@ -107,6 +107,8 @@ class MeanShift_weighted():
 
     def mean_shift(self, points, scores, weighting=None, kernel='gauss', n_pr=1, fuse_dist=40.):
         assert points.shape[0] == scores.shape[0]
+        if n_pr > points.shape[0]:
+            n_pr = points.shape[0]
         self._reset_globals()
         self.min_score = np.min(scores)
         self.max_score = np.max(scores)
